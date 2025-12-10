@@ -7,7 +7,16 @@ var admin = require("firebase-admin");
 const app = express();
 const port = 3000;
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://your-frontend-domain.vercel.app",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 
 const uri = process.env.DB_URI;
@@ -83,6 +92,23 @@ async function run() {
     app.get("/user/role", verifyJWT, async (req, res) => {
       const result = await usersCollection.findOne({ email: req.tokenEmail });
       res.send({ role: result?.role });
+    });
+    
+    // get user
+    app.get("/user/:email", verifyJWT, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = await usersCollection.findOne({ email: email });
+
+        if (!user) {
+          return res.status(404).send({ message: "User not found!" });
+        }
+
+        res.send(user);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
     });
 
     // Connect the client to the server	(optional starting in v4.7)
