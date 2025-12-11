@@ -17,6 +17,7 @@ app.use(
       "https://ticket-point.vercel.app",
       "https://ticket-point.netlify.app",
     ],
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -212,6 +213,22 @@ async function run() {
       );
 
       res.send(result);
+    });
+
+    // GET all booked tickets for a user
+    app.get("/booked-tickets/:email", async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        const bookings = await bookingsCollection
+          .find({ email: email })
+          .toArray();
+
+        res.status(200).json(bookings);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to fetch booked tickets" });
+      }
     });
 
     // Connect the client to the server	(optional starting in v4.7)
