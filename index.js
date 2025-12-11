@@ -58,6 +58,29 @@ async function run() {
   try {
     const db = client.db("ticketPointDB");
     const usersCollection = db.collection("users");
+    const ticketsCollection = db.collection("tickets");
+    const bookingsCollection = db.collection("bookings");
+    const transactionsCollection = db.collection("transactions");
+
+    //role check middlewares
+    const verifyRole = (requiredRole) => async (req, res, next) => {
+      try {
+        const user = await usersCollection.findOne({ email: req.tokenEmail });
+        if (!user)
+          return res.status(403).send({ message: "Forbidden: user not found" });
+        if (user.role !== requiredRole)
+          return res
+            .status(403)
+            .send({ message: `Forbidden: ${requiredRole} only` });
+        req.currentUser = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    };
+
+    const verifyAdmin = verifyRole("admin");
+    const verifyVendor = verifyRole("vendor");
 
     // save or update a user in db
     app.post("/user", async (req, res) => {
@@ -93,7 +116,7 @@ async function run() {
       const result = await usersCollection.findOne({ email: req.tokenEmail });
       res.send({ role: result?.role });
     });
-    
+
     // get user
     app.get("/user/:email", verifyJWT, async (req, res) => {
       try {
