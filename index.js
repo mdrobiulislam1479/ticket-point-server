@@ -14,7 +14,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://your-frontend-domain.vercel.app",
+      "https://ticket-point.vercel.app",
+      "https://ticket-point.netlify.app",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -198,6 +199,19 @@ async function run() {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
       }
+    });
+
+    // Update ticket
+    app.put("/tickets/:id", async (req, res) => {
+      const id = req.params.id;
+      const body = req.body;
+
+      const result = await ticketsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: body }
+      );
+
+      res.send(result);
     });
 
     // Connect the client to the server	(optional starting in v4.7)
