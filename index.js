@@ -5,6 +5,8 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 var admin = require("firebase-admin");
 
 const app = express();
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 const port = 3000;
 
 app.use(
@@ -130,6 +132,26 @@ async function run() {
         res.send(user);
       } catch (error) {
         console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Vendor: add ticket
+    app.post("/tickets", verifyJWT, verifyVendor, async (req, res) => {
+      try {
+        const ticket = req.body;
+
+        const now = new Date().toISOString();
+        ticket.vendor_name = req.currentUser.name || ticket.vendor_name;
+        ticket.vendor_email = req.currentUser.email;
+        ticket.created_at = now;
+        ticket.status = "pending";
+        ticket.advertised = false;
+        ticket.hidden = !!req.currentUser.isFraud;
+        const result = await ticketsCollection.insertOne(ticket);
+        res.send(result);
+      } catch (err) {
+        console.error(err);
         res.status(500).send({ message: "Server error" });
       }
     });
