@@ -3,6 +3,7 @@ require("dotenv").config();
 const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
 var admin = require("firebase-admin");
+const { ObjectId } = require("mongodb");
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -153,6 +154,49 @@ async function run() {
       } catch (err) {
         console.error(err);
         res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // get ticket
+    app.get("/tickets/:email", verifyJWT, verifyVendor, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const tickets = await ticketsCollection
+          .find({
+            vendor_email: email,
+          })
+          .toArray();
+
+        if (!tickets) {
+          return res.status(404).send({ message: "Ticket not found!" });
+        }
+
+        res.send(tickets);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Delete ticket
+    app.delete("/tickets/:id", verifyJWT, verifyVendor, async (req, res) => {
+      const { id } = req.params;
+      console.log(id);
+
+      try {
+        const result = await ticketsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 0) {
+          return res.status(404).json({ message: "Ticket not found" });
+        }
+        res.json({
+          message: "Ticket deleted successfully",
+          deletedCount: result.deletedCount,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
       }
     });
 
