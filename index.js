@@ -18,7 +18,7 @@ app.use(
       "https://ticket-point.netlify.app",
     ],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -252,7 +252,7 @@ async function run() {
 
     //save booked ticket
     app.post("/booked-tickets", verifyJWT, async (req, res) => {
-      const { ticketId, userEmail, quantity } = req.body;
+      const { ticketId, user_email, user_name, quantity } = req.body;
 
       const ticket = await ticketsCollection.findOne({
         _id: new ObjectId(ticketId),
@@ -269,10 +269,11 @@ async function run() {
       // create booking with ticket snapshot
       const booking = {
         ticketId: ticket._id,
-        userEmail,
+        user_email,
+        user_name,
         bookedQuantity: quantity,
         status: "pending",
-        createdAt: new Date(),
+        created_At: new Date(),
 
         // snapshot
         title: ticket.title,
@@ -281,6 +282,7 @@ async function run() {
         to: ticket.to,
         departure: ticket.departure,
         price: ticket.price,
+        vendor_email: ticket.vendor_email,
       };
 
       // save booking
@@ -309,6 +311,42 @@ async function run() {
         console.error(error);
         res.status(500).json({ message: "Failed to fetch booked tickets" });
       }
+    });
+
+    // GET: Vendor Requested Bookings
+    app.get("/vendor/bookings/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+
+      const result = await bookingsCollection
+        .find({ vendor_email: email })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+    // PATCH: Accept Booking
+    app.patch("/bookings/accept/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await bookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "accepted" } }
+      );
+
+      res.send(result);
+    });
+
+    // PATCH: Reject Booking
+    app.patch("/bookings/reject/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await bookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "rejected" } }
+      );
+
+      res.send(result);
     });
 
     // Connect the client to the server	(optional starting in v4.7)
