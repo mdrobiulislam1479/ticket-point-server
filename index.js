@@ -159,26 +159,31 @@ async function run() {
       }
     });
 
-    // get ticket
-    app.get("/tickets/:email", verifyJWT, verifyVendor, async (req, res) => {
-      try {
-        const email = req.params.email;
-        const tickets = await ticketsCollection
-          .find({
-            vendor_email: email,
-          })
-          .toArray();
+    // get ticket by email
+    app.get(
+      "/tickets/vendor/:email",
+      verifyJWT,
+      verifyVendor,
+      async (req, res) => {
+        try {
+          const email = req.params.email;
+          const tickets = await ticketsCollection
+            .find({
+              vendor_email: email,
+            })
+            .toArray();
 
-        if (!tickets) {
-          return res.status(404).send({ message: "Ticket not found!" });
+          if (!tickets) {
+            return res.status(404).send({ message: "Ticket not found!" });
+          }
+
+          res.send(tickets);
+        } catch (error) {
+          console.error(error);
+          res.status(500).send({ message: "Server error" });
         }
-
-        res.send(tickets);
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Server error" });
       }
-    });
+    );
 
     // Delete ticket
     app.delete("/tickets/:id", verifyJWT, verifyVendor, async (req, res) => {
@@ -203,7 +208,7 @@ async function run() {
     });
 
     // Update ticket
-    app.put("/tickets/:id", async (req, res) => {
+    app.put("/tickets/:id", verifyJWT, verifyVendor, async (req, res) => {
       const id = req.params.id;
       const body = req.body;
 
@@ -215,13 +220,88 @@ async function run() {
       res.send(result);
     });
 
-    // GET all booked tickets for a user
-    app.get("/booked-tickets/:email", async (req, res) => {
+    // get ticket by id
+    app.get("/tickets/:id", verifyJWT, async (req, res) => {
       try {
-        const email = req.query.email;
+        const id = req.params.id;
+        const result = await ticketsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+
+    // GET latest 6 tickets
+    app.get("/latest-ticket", async (req, res) => {
+      try {
+        const tickets = await ticketsCollection
+          .find({})
+          .sort({ created_at: -1 })
+          .limit(6)
+          .toArray();
+
+        res.status(200).json(tickets);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to fetch latest tickets" });
+      }
+    });
+
+    //save booked ticket
+    app.post("/booked-tickets", verifyJWT, async (req, res) => {
+      const { ticketId, userEmail, quantity } = req.body;
+
+      const ticket = await ticketsCollection.findOne({
+        _id: new ObjectId(ticketId),
+      });
+
+      if (!ticket) return res.status(404).send({ message: "Ticket not found" });
+
+      if (ticket.quantity < quantity) {
+        return res
+          .status(400)
+          .send({ message: "Not enough tickets available" });
+      }
+
+      // create booking with ticket snapshot
+      const booking = {
+        ticketId: ticket._id,
+        userEmail,
+        bookedQuantity: quantity,
+        status: "pending",
+        createdAt: new Date(),
+
+        // snapshot
+        title: ticket.title,
+        image: ticket.image,
+        from: ticket.from,
+        to: ticket.to,
+        departure: ticket.departure,
+        price: ticket.price,
+      };
+
+      // save booking
+      await bookingsCollection.insertOne(booking);
+
+      // decrease ticket quantity
+      await ticketsCollection.updateOne(
+        { _id: ticket._id },
+        { $inc: { quantity: -quantity } }
+      );
+
+      res.send({ message: "Booking created", booking });
+    });
+
+    // GET all booked tickets for a user
+    app.get("/booked-tickets/:email", verifyJWT, async (req, res) => {
+      try {
+        const email = req.params.email;
 
         const bookings = await bookingsCollection
-          .find({ email: email })
+          .find({ user_email: email })
           .toArray();
 
         res.status(200).json(bookings);
