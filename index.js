@@ -1,9 +1,10 @@
-const express = require("express");
 require("dotenv").config();
+const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
 var admin = require("firebase-admin");
 const { ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPR_DECRET_KEY);
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -65,7 +66,7 @@ async function run() {
     const usersCollection = db.collection("users");
     const ticketsCollection = db.collection("tickets");
     const bookingsCollection = db.collection("bookings");
-    const transactionsCollection = db.collection("transactions");
+    const paymentsCollection = db.collection("payments");
 
     //role check middlewares
     const verifyRole = (requiredRole) => async (req, res, next) => {
@@ -145,6 +146,8 @@ async function run() {
         const ticket = req.body;
 
         const now = new Date().toISOString();
+        ticket.price = Number(ticket.price);
+        ticket.quantity = Number(ticket.quantity);
         ticket.vendor_name = req.currentUser.name || ticket.vendor_name;
         ticket.vendor_email = req.currentUser.email;
         ticket.created_at = now;
@@ -273,7 +276,7 @@ async function run() {
         user_name,
         bookedQuantity: quantity,
         status: "pending",
-        created_At: new Date(),
+        created_At: new Date().toISOString(),
 
         // snapshot
         title: ticket.title,
@@ -339,14 +342,107 @@ async function run() {
 
     // PATCH: Reject Booking
     app.patch("/bookings/reject/:id", verifyJWT, async (req, res) => {
-      const id = req.params.id;
+      const bookingId = req.params.id;
 
-      const result = await bookingsCollection.updateOne(
-        { _id: new ObjectId(id) },
+      // 1. Find booking
+      const booking = await bookingsCollection.findOne({
+        _id: new ObjectId(bookingId),
+      });
+
+      if (!booking) {
+        return res.status(404).send({ message: "Booking not found" });
+      }
+
+      // 2. Update booking status
+      const bookingResult = await bookingsCollection.updateOne(
+        { _id: new ObjectId(bookingId) },
         { $set: { status: "rejected" } }
       );
 
-      res.send(result);
+      // 3. Increase ticket quantity
+      await ticketsCollection.updateOne(
+        { _id: new ObjectId(booking.ticketId) },
+        { $inc: { quantity: booking.bookedQuantity } }
+      );
+
+      res.send({
+        success: true,
+        bookingResult,
+      });
+    });
+
+    //Checkout Session
+    app.post("/create-checkout-session", verifyJWT, async (req, res) => {
+      const { ticket, user } = req.body;
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: ticket.title },
+              unit_amount: ticket.price * 100,
+            },
+            quantity: ticket.bookedQuantity,
+          },
+        ],
+
+        success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.CLIENT_URL}/dashboard/my-bookings`,
+
+        metadata: {
+          bookingId: ticket.bookingId,
+          userEmail: user.email,
+          vendorEmail: ticket.vendorEmail,
+          ticketTitle: ticket.title,
+        },
+      });
+
+      res.send({ url: session.url });
+    });
+
+    //Save Payment History
+    app.post("/payment-success", async (req, res) => {
+      const { sessionId } = req.body;
+
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status !== "paid") {
+        return res.status(400).send({ message: "Payment not completed" });
+      }
+
+      // prevent duplicate
+      const exists = await paymentsCollection.findOne({
+        stripeSessionId: session.id,
+      });
+
+      if (exists) {
+        return res.send({ message: "Already recorded" });
+      }
+
+      const paymentData = {
+        bookingId: new ObjectId(session.metadata.bookingId),
+        userEmail: session.metadata.userEmail,
+        vendorEmail: session.metadata.vendorEmail,
+        ticketTitle: session.metadata.ticketTitle,
+        amount: session.amount_total / 100,
+        stripeSessionId: session.id,
+        transactionId: session.payment_intent,
+        status: "paid",
+        paidAt: new Date(),
+      };
+
+      await paymentsCollection.insertOne(paymentData);
+
+      await bookingsCollection.updateOne(
+        { _id: new ObjectId(session.metadata.bookingId) },
+        { $set: { status: "paid", paidAt: new Date().toISOString() } }
+      );
+
+      res.send({ success: true });
     });
 
     // Connect the client to the server	(optional starting in v4.7)
