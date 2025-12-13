@@ -276,6 +276,7 @@ async function run() {
         user_name,
         bookedQuantity: quantity,
         status: "pending",
+        paymentStatus: "unpaid",
         created_At: new Date().toISOString(),
 
         // snapshot
@@ -439,10 +440,27 @@ async function run() {
 
       await bookingsCollection.updateOne(
         { _id: new ObjectId(session.metadata.bookingId) },
-        { $set: { status: "paid", paidAt: new Date().toISOString() } }
+        { $set: { paymentStatus: "paid", paidAt: new Date().toISOString() } }
       );
 
       res.send({ success: true });
+    });
+
+    // get all transactions
+    app.get("/transactions/:email", verifyJWT, async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        const transactions = await paymentsCollection
+          .find({ userEmail: email })
+          .sort({ paidAt: -1 })
+          .toArray();
+
+        res.send(transactions);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Failed to fetch transactions" });
+      }
     });
 
     // Connect the client to the server	(optional starting in v4.7)
