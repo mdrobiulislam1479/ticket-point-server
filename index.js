@@ -94,6 +94,7 @@ async function run() {
       userData.created_at = new Date().toISOString();
       userData.last_loggedIn = new Date().toISOString();
       userData.role = "user";
+      userData.isFraud = false;
 
       const query = {
         email: userData.email,
@@ -510,6 +511,70 @@ async function run() {
         );
 
         res.send(result);
+      }
+    );
+
+    // Get all users
+    app.get("/admin/users", verifyJWT, verifyAdmin, async (req, res) => {
+      const users = await usersCollection.find().toArray();
+      res.send(users);
+    });
+
+    // Make Admin
+    app.patch(
+      "/admin/users/make-admin/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: { role: "admin" } }
+        );
+        res.send(result);
+      }
+    );
+
+    // Make Vendor
+    app.patch(
+      "/admin/users/make-vendor/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: { role: "vendor", isFraud: false } }
+        );
+        res.send(result);
+      }
+    );
+
+    // Mark Vendor as Fraud
+    app.patch(
+      "/admin/users/mark-fraud/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const user = await usersCollection.findOne({
+          _id: new ObjectId(req.params.id),
+        });
+
+        if (user.role !== "vendor") {
+          return res.status(400).send({ message: "Not a vendor" });
+        }
+
+        // Mark vendor fraud
+        await usersCollection.updateOne(
+          { _id: user._id },
+          { $set: { isFraud: true } }
+        );
+
+        // Hide all vendor tickets
+        await ticketsCollection.updateMany(
+          { vendor_email: user.email },
+          { $set: { status: "hidden" } }
+        );
+
+        res.send({ success: true });
       }
     );
 
