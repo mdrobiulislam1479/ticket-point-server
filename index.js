@@ -144,6 +144,13 @@ async function run() {
     // Vendor: add ticket
     app.post("/tickets", verifyJWT, verifyVendor, async (req, res) => {
       try {
+        // Block fraud vendor
+        if (req.currentUser.isFraud) {
+          return res.status(403).send({
+            message: "Fraud vendors are not allowed to add tickets.",
+          });
+        }
+
         const ticket = req.body;
 
         const now = new Date().toISOString();
