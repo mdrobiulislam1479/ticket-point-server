@@ -242,7 +242,9 @@ async function run() {
     app.get("/latest-ticket", async (req, res) => {
       try {
         const tickets = await ticketsCollection
-          .find({})
+          .find({
+            status: "approved",
+          })
           .sort({ created_at: -1 })
           .limit(6)
           .toArray();
@@ -575,6 +577,60 @@ async function run() {
         );
 
         res.send({ success: true });
+      }
+    );
+
+    // Get all approved tickets (Admin)
+    app.get(
+      "/admin/advertise-tickets",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const tickets = await ticketsCollection
+          .find({
+            status: "approved",
+          })
+          .toArray();
+
+        res.send(tickets);
+      }
+    );
+
+    // Toggle Advertise / Unadvertise (Max 6 limit)
+    app.patch(
+      "/admin/tickets/advertise/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+
+        const ticket = await ticketsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!ticket) {
+          return res.status(404).send({ message: "Ticket not found" });
+        }
+
+        // If advertising → check limit
+        if (!ticket.advertised) {
+          const advertisedCount = await ticketsCollection.countDocuments({
+            advertised: true,
+          });
+
+          if (advertisedCount >= 6) {
+            return res.status(400).send({
+              message: "You can advertise a maximum of 6 tickets only",
+            });
+          }
+        }
+
+        const result = await ticketsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { advertised: !ticket.advertised } }
+        );
+
+        res.send(result);
       }
     );
 
