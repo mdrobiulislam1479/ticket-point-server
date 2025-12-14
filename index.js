@@ -463,6 +463,56 @@ async function run() {
       }
     });
 
+    // Get all tickets (Admin)
+    app.get("/admin/tickets", verifyJWT, verifyAdmin, async (req, res) => {
+      const result = await ticketsCollection.find().toArray();
+      res.send(result);
+    });
+
+    // Approve Ticket
+    app.patch(
+      "/admin/tickets/approve/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+
+        const result = await ticketsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status: "approved",
+              approvedAt: new Date(),
+            },
+          }
+        );
+
+        res.send(result);
+      }
+    );
+
+    // Reject Ticket
+    app.patch(
+      "/admin/tickets/reject/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+
+        const result = await ticketsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status: "rejected",
+              rejectedAt: new Date(),
+            },
+          }
+        );
+
+        res.send(result);
+      }
+    );
+
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
