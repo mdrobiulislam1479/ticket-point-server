@@ -265,6 +265,52 @@ async function run() {
       }
     });
 
+    // GET /all-tickets?from=&to=&transport=&sort=&page=&limit=
+    app.get("/all-tickets", async (req, res) => {
+      try {
+        const { from, to, transport, sort, page = 1, limit = 6 } = req.query;
+
+        const query = {};
+        query.status = "approved";
+
+        // Search by from & to
+        if (from) query.from = { $regex: from, $options: "i" };
+        if (to) query.to = { $regex: to, $options: "i" };
+
+        // Filter by transport
+        if (transport) query.transportType = transport;
+
+        // Count total documents
+        const total = await ticketsCollection.countDocuments(query);
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Sorting
+        let sortOption = {};
+        if (sort === "low") sortOption.price = 1;
+        if (sort === "high") sortOption.price = -1;
+
+        const tickets = await ticketsCollection
+          .find(query)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .toArray();
+
+        const totalPages = Math.ceil(total / parseInt(limit));
+
+        res.json({
+          tickets,
+          totalPages,
+          currentPage: parseInt(page),
+          totalTickets: total,
+        });
+      } catch (err) {
+        console.error("All Tickets Error:", err);
+        res.status(500).json({ message: "Server Error" });
+      }
+    });
+
     //save booked ticket
     app.post("/booked-tickets", verifyJWT, async (req, res) => {
       const { ticketId, user_email, user_name, quantity } = req.body;
