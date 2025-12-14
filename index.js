@@ -154,7 +154,6 @@ async function run() {
         ticket.created_at = now;
         ticket.status = "pending";
         ticket.advertised = false;
-        ticket.hidden = !!req.currentUser.isFraud;
         const result = await ticketsCollection.insertOne(ticket);
         res.send(result);
       } catch (err) {
@@ -236,6 +235,16 @@ async function run() {
         console.log(err);
         res.status(500).json({ message: "Internal Server Error" });
       }
+    });
+
+    //Get Advertised Tickets
+    app.get("/advertised-tickets", async (req, res) => {
+      const tickets = await ticketsCollection
+        .find({ advertised: true })
+        .limit(6)
+        .toArray();
+
+      res.send(tickets);
     });
 
     // GET latest 6 tickets
