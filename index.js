@@ -437,6 +437,59 @@ async function run() {
       });
     });
 
+    //get revenue overview
+    app.get(
+      "/vendor/revenue-overview/:email",
+      verifyJWT,
+      verifyVendor,
+      async (req, res) => {
+        try {
+          const email = req.params.email;
+
+          // 1. Total Revenue
+          const revenueAgg = await paymentsCollection
+            .aggregate([
+              { $match: { vendorEmail: email, status: "paid" } },
+              { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
+            ])
+            .toArray();
+
+          // 2. Total Tickets Sold
+          const soldAgg = await bookingsCollection
+            .aggregate([
+              {
+                $match: {
+                  vendor_email: email,
+                  paymentStatus: "paid",
+                  status: "accepted",
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalSold: { $sum: "$bookedQuantity" },
+                },
+              },
+            ])
+            .toArray();
+
+          // 3. Total Tickets Added
+          const totalTickets = await ticketsCollection.countDocuments({
+            vendor_email: email,
+          });
+
+          res.send({
+            totalRevenue: revenueAgg[0]?.totalRevenue || 0,
+            totalTicketsSold: soldAgg[0]?.totalSold || 0,
+            totalTicketsAdded: totalTickets,
+          });
+        } catch (err) {
+          console.error(err);
+          res.status(500).send({ message: "Server error" });
+        }
+      }
+    );
+
     //Checkout Session
     app.post("/create-checkout-session", verifyJWT, async (req, res) => {
       const { ticket, user } = req.body;
